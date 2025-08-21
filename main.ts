@@ -8,48 +8,59 @@ const TOKEN = Deno.env.get("BOT_TOKEN");
 const SECRET_PATH = "/testsub";
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
 
-// === CONFIG ===
-const BOT_TOKEN = "YOUR_BOT_TOKEN"; // from @BotFather
-const REQUIRED_CHANNELS = ["@FlapsterMiner", "@examplechannel2"];
-const ACCESS_MESSAGE = "✅ You are subscribed! Here is your access: [Secret Link]";
-const SUBSCRIBE_MESSAGE = "❌ Please subscribe to all channels first:\n" + REQUIRED_CHANNELS.join("\n");
+import { Bot, InlineKeyboard } from "https://deno.land/x/grammy/mod.ts";
 
-const bot = new Bot(BOT_TOKEN);
+// Your bot token from @BotFather
+const bot = Deno.env.get("BOT_TOKEN");
 
-// Function to check subscription
-async function isSubscribed(userId: number, channel: string): Promise<boolean> {
-  const url = `https://api.telegram.org/bot${BOT_TOKEN}/getChatMember?chat_id=${channel}&user_id=${userId}`;
-  const resp = await fetch(url);
-  const data = await resp.json();
+// List of channels to check
+const channels = ["@FlapsterMiner", "@channel2", "@channel3"];
 
-  if (data.result) {
-    const status = data.result.status;
-    return ["member", "administrator", "creator"].includes(status);
-  }
-  return false;
-}
-
-// /start handler
-bot.command("start", async (ctx) => {
-  const userId = ctx.from?.id;
-  if (!userId) return;
-
-  let allSubscribed = true;
-  for (const ch of REQUIRED_CHANNELS) {
-    const sub = await isSubscribed(userId, ch);
-    if (!sub) {
-      allSubscribed = false;
-      break;
+// Function to check if user is member of all channels
+async function isSubscribed(ctx: any) {
+  for (const channel of channels) {
+    try {
+      const member = await ctx.api.getChatMember(channel, ctx.from.id);
+      if (member.status === "left" || member.status === "kicked") {
+        return false;
+      }
+    } catch (error) {
+      console.error(error);
+      return false;
     }
   }
+  return true;
+}
 
-  if (allSubscribed) {
-    await ctx.reply(ACCESS_MESSAGE);
+// Start command
+bot.command("start", async (ctx) => {
+  const subscribed = await isSubscribed(ctx);
+
+  if (subscribed) {
+    await ctx.reply("🎉 Thank you for subscribing to all channels!");
   } else {
-    await ctx.reply(SUBSCRIBE_MESSAGE);
+    const keyboard = new InlineKeyboard()
+      .text("Subscribe", "subscribe");
+
+    await ctx.reply(
+      "⚠️ You need to subscribe to all channels first!",
+      { reply_markup: keyboard }
+    );
   }
 });
 
-// Start bot
+// Button callback
+bot.callbackQuery("subscribe", async (ctx) => {
+  await ctx.answerCallbackQuery("Check your subscription now!");
+  const subscribed = await isSubscribed(ctx);
+
+  if (subscribed) {
+    await ctx.editMessageText("🎉 Thank you for subscribing to all channels!");
+  } else {
+    await ctx.editMessageText("⚠️ You still need to subscribe to all channels!");
+  }
+});
+
+console.log("Bot is running...");
 bot.start();
 
