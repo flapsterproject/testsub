@@ -6,7 +6,7 @@ const kv = await Deno.openKv();
 const TOKEN = Deno.env.get("BOT_TOKEN");
 const SECRET_PATH = "/testsub"; // change this
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
-const CHANNELS = ["@FlapsterMiner", "@Grand_Tunnel"]; // your channels
+const CHANNELS = ["@FlapsterMiner"]; // your channels
 
 serve(async (req: Request) => {
   const { pathname } = new URL(req.url);
