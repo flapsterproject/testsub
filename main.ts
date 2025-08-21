@@ -1,66 +1,75 @@
 // main.ts
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-const kv = await Deno.openKv(); // встроенный KV в Deno
-
+const kv = await Deno.openKv();
 
 const TOKEN = Deno.env.get("BOT_TOKEN");
-const SECRET_PATH = "/testsub";
+const SECRET_PATH = "/YourBotSecretPath"; // change this
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
+const CHANNELS = ["@FlapsterMiner", "@channel2"]; // your channels
 
-import { Bot, InlineKeyboard } from "https://deno.land/x/grammy/mod.ts";
+serve(async (req: Request) => {
+  const { pathname } = new URL(req.url);
+  if (pathname !== SECRET_PATH) {
+    return new Response("Bot is running.", { status: 200 });
+  }
 
-// Your bot token from @BotFather
-const bot = Deno.env.get("BOT_TOKEN");
+  if (req.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
 
-// List of channels to check
-const channels = ["@FlapsterMiner", "@channel2", "@channel3"];
+  const update = await req.json();
+  const message = update.message;
+  const chatId = message?.chat?.id;
+  const text = message?.text;
 
-// Function to check if user is member of all channels
-async function isSubscribed(ctx: any) {
-  for (const channel of channels) {
-    try {
-      const member = await ctx.api.getChatMember(channel, ctx.from.id);
-      if (member.status === "left" || member.status === "kicked") {
+  if (!chatId) return new Response("No chat ID", { status: 200 });
+
+  // Function to check subscription
+  async function isSubscribed(userId: number) {
+    for (const channel of CHANNELS) {
+      try {
+        const res = await fetch(`${TELEGRAM_API}/getChatMember?chat_id=${channel}&user_id=${userId}`);
+        const data = await res.json();
+        if (!data.ok) return false;
+        const status = data.result.status;
+        if (status === "left" || status === "kicked") return false;
+      } catch (e) {
+        console.error(e);
         return false;
       }
-    } catch (error) {
-      console.error(error);
-      return false;
+    }
+    return true;
+  }
+
+  if (text?.startsWith("/start")) {
+    const subscribed = await isSubscribed(chatId);
+
+    if (subscribed) {
+      await fetch(`${TELEGRAM_API}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: "🎉 Thank you for subscribing to all channels! You can now use the bot."
+        })
+      });
+    } else {
+      await fetch(`${TELEGRAM_API}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: "⚠️ You need to subscribe to all channels first!",
+          reply_markup: {
+            inline_keyboard: CHANNELS.map(channel => [{ text: `Join ${channel}`, url: `https://t.me/${channel.replace("@","")}` }])
+          }
+        })
+      });
     }
   }
-  return true;
-}
 
-// Start command
-bot.command("start", async (ctx) => {
-  const subscribed = await isSubscribed(ctx);
-
-  if (subscribed) {
-    await ctx.reply("🎉 Thank you for subscribing to all channels!");
-  } else {
-    const keyboard = new InlineKeyboard()
-      .text("Subscribe", "subscribe");
-
-    await ctx.reply(
-      "⚠️ You need to subscribe to all channels first!",
-      { reply_markup: keyboard }
-    );
-  }
+  return new Response("OK", { status: 200 });
 });
 
-// Button callback
-bot.callbackQuery("subscribe", async (ctx) => {
-  await ctx.answerCallbackQuery("Check your subscription now!");
-  const subscribed = await isSubscribed(ctx);
-
-  if (subscribed) {
-    await ctx.editMessageText("🎉 Thank you for subscribing to all channels!");
-  } else {
-    await ctx.editMessageText("⚠️ You still need to subscribe to all channels!");
-  }
-});
-
-console.log("Bot is running...");
-bot.start();
 
